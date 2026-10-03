@@ -68,6 +68,9 @@ type CreateLeadRequest struct {
 	LastName  string `json:"lastName"`
 	Email     string `json:"email"`
 	Phone     string `json:"phone"`
+	// Optional: when set (form dropdown, e.g. "+49"), Phone is the national
+	// number only. When empty, Phone must be a full number.
+	PhoneCountryCode string `json:"phoneCountryCode"`
 
 	Street      string `json:"street"`
 	HouseNumber string `json:"houseNumber"`

@@ -14,7 +14,9 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string { return "validation failed" }
 
-var postalCodeRe = regexp.MustCompile(`^[0-9]{5}$`)
+// German postal codes only (the service covers plots in Germany): five
+// digits, and no German postal code starts with "00".
+var postalCodeRe = regexp.MustCompile(`^(0[1-9]|[1-9][0-9])[0-9]{3}$`)
 
 // Validate checks a request. The frontend validates too, but only for
 // usability – this is the check that protects data integrity.
@@ -44,15 +46,14 @@ func Validate(req CreateLeadRequest) *ValidationError {
 	}
 
 	if required("phone", req.Phone, "Bitte Telefonnummer angeben.") {
-		digits := strings.TrimPrefix(NormalizePhone(req.Phone), "+")
-		if len(digits) < 7 || len(digits) > 15 {
-			f["phone"] = "Bitte eine gültige Telefonnummer angeben."
+		if msg := validatePhone(req.PhoneCountryCode, req.Phone); msg != "" {
+			f["phone"] = msg
 		}
 	}
 
 	if required("postalCode", req.PostalCode, "Bitte Postleitzahl angeben.") &&
 		!postalCodeRe.MatchString(NormalizePostalCode(req.PostalCode)) {
-		f["postalCode"] = "Die Postleitzahl muss aus 5 Ziffern bestehen."
+		f["postalCode"] = "Bitte eine gültige deutsche Postleitzahl angeben (5 Ziffern)."
 	}
 
 	if !req.Consent {
@@ -72,6 +73,49 @@ func Validate(req CreateLeadRequest) *ValidationError {
 		return &ValidationError{Fields: f}
 	}
 	return nil
+}
+
+// Minimum/maximum length of the national number without leading zeros.
+// German numbers have at least 7 digits (area code + subscriber number);
+// E.164 allows at most 15 digits including the country code.
+const (
+	minPhoneDigits = 7
+	maxPhoneDigits = 15
+)
+
+var countryCodeRe = regexp.MustCompile(`^\+[1-9][0-9]{0,3}$`)
+
+// validatePhone returns a user-facing error message or "".
+//
+// With a country code (the form's dropdown) the number must consist of
+// digits only. Without one (API clients) a full number in any common format
+// is accepted and normalized by NormalizePhone.
+func validatePhone(countryCode, phone string) string {
+	const invalid = "Bitte eine gültige Telefonnummer angeben (mind. 7 Ziffern)."
+
+	if countryCode == "" {
+		digits := strings.TrimPrefix(NormalizePhone(phone), "+")
+		if len(digits) < minPhoneDigits || len(digits) > maxPhoneDigits {
+			return invalid
+		}
+		return ""
+	}
+
+	if !countryCodeRe.MatchString(countryCode) {
+		return "Bitte eine gültige Ländervorwahl wählen."
+	}
+	national := strings.Join(strings.Fields(phone), "")
+	for _, r := range national {
+		if r < '0' || r > '9' {
+			return "Die Telefonnummer darf nur Ziffern enthalten."
+		}
+	}
+	nsn := strings.TrimLeft(national, "0")
+	total := len(countryCode) - 1 + len(nsn)
+	if len(nsn) < minPhoneDigits || total > maxPhoneDigits {
+		return invalid
+	}
+	return ""
 }
 
 // validEmail accepts plain addresses like "a@b.de" and rejects display-name

@@ -75,6 +75,8 @@ func TestNormalizePhone(t *testing.T) {
 		"040 123456":        "+4940123456",
 		"+49 (0)40 123456":  "+4940123456",
 		"0170 5551234":      "+491705551234",
+		"+49 0170 5551234":  "+491705551234", // trunk 0 after country code
+		"00490170 5551234":  "+491705551234",
 		"040 55512345":      "+494055512345",
 		"+43 1 234567":      "+431234567", // foreign numbers keep their country code
 		"0041-44-1234567":   "+41441234567",
@@ -86,5 +88,25 @@ func TestNormalizePhone(t *testing.T) {
 		if got := NormalizePhone(in); got != want {
 			t.Errorf("NormalizePhone(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestComposePhone(t *testing.T) {
+	cases := []struct{ code, national, raw, normalized string }{
+		{"+49", "0170 1234567", "+49 1701234567", "+491701234567"},
+		{"+49", "40123456", "+49 40123456", "+4940123456"},
+		{"+43", "0699 12112010", "+43 69912112010", "+4369912112010"},
+	}
+	for _, tc := range cases {
+		raw, norm := ComposePhone(tc.code, tc.national)
+		if raw != tc.raw || norm != tc.normalized {
+			t.Errorf("ComposePhone(%q, %q) = %q, %q; want %q, %q", tc.code, tc.national, raw, norm, tc.raw, tc.normalized)
+		}
+	}
+	// Same person, once via the form dropdown and once as a full number:
+	// both must normalize identically for duplicate detection.
+	_, fromForm := ComposePhone("+49", "040 123456")
+	if fromForm != NormalizePhone("+49 40 / 123 456") {
+		t.Errorf("form and full-number normalization differ: %q vs %q", fromForm, NormalizePhone("+49 40 / 123 456"))
 	}
 }

@@ -1,1 +1,18 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+
+  --color-cream: #f3f4eb;
+  --color-ink: #1e3932;
+  --color-accent: #cb7c56;
+  --color-accent-dark: #b5673f;
+  --color-error: #d0021b;
+  --color-error-bg: #fbeef0;
+}
+
+@layer base {
+  body {
+    @apply bg-cream font-sans text-ink antialiased;
+  }
+}

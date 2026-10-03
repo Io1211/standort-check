@@ -48,6 +48,14 @@ func NormalizePostalCode(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// ComposePhone joins the dropdown country code and the national number typed
+// in the form. A leading trunk "0" is dropped: "+49" + "0170 1234567" →
+// raw "+49 170 1234567", normalized "+491701234567". Expects validated input.
+func ComposePhone(countryCode, national string) (raw, normalized string) {
+	digits := strings.TrimLeft(strings.Join(strings.Fields(national), ""), "0")
+	return countryCode + " " + digits, countryCode + digits
+}
+
 // NormalizePhone converts German phone numbers to an E.164-like form so that
 // "+49 40 / 123 456", "004940123456" and "040 123456" all become
 // "+4940123456". Numbers without any prefix are returned as plain digits.
@@ -66,13 +74,14 @@ func NormalizePhone(s string) string {
 	p := b.String()
 
 	switch {
-	case strings.HasPrefix(p, "+"):
-		return p
 	case strings.HasPrefix(p, "00"):
-		return "+" + p[2:]
+		p = "+" + p[2:]
 	case strings.HasPrefix(p, "0"):
-		return "+49" + p[1:]
-	default:
-		return p
+		p = "+49" + p[1:]
 	}
+	// "+49 0170 …": country code plus the national trunk "0" – drop the 0.
+	if strings.HasPrefix(p, "+490") {
+		p = "+49" + p[4:]
+	}
+	return p
 }

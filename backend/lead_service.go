@@ -40,6 +40,11 @@ func buildLead(req CreateLeadRequest) Lead {
 	t := strings.TrimSpace
 	houseNumber := strings.Join(strings.Fields(req.HouseNumber), " ")
 
+	phone, phoneNormalized := t(req.Phone), NormalizePhone(req.Phone)
+	if req.PhoneCountryCode != "" {
+		phone, phoneNormalized = ComposePhone(req.PhoneCountryCode, req.Phone)
+	}
+
 	return Lead{
 		FirstName: t(req.FirstName),
 		LastName:  t(req.LastName),
@@ -47,8 +52,8 @@ func buildLead(req CreateLeadRequest) Lead {
 		Email:           t(req.Email),
 		EmailNormalized: NormalizeEmail(req.Email),
 
-		Phone:           t(req.Phone),
-		PhoneNormalized: NormalizePhone(req.Phone),
+		Phone:           phone,
+		PhoneNormalized: phoneNormalized,
 
 		Street:           t(req.Street),
 		StreetNormalized: NormalizeStreet(req.Street),
