@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router'
 import { campaignLabel, formatAddress, formatReceived, sourceLabel } from '../format'
 import type { AdminLead, LeadStatus } from '../types'
 import { DuplicateBadge } from './DuplicateBadge'
+import { AreaBadge, GeoWarnings } from './GeoBadge'
 import { StatusSelect } from './StatusBadge'
 
 export type SortKey = 'created_at' | 'name' | 'city' | 'status'
@@ -65,7 +66,14 @@ function DesktopTable({ leads, sort, desc, onSort, onStatusChange, savingId }: P
               <td className="px-4 py-3 align-top">
                 <div>{formatAddress(l)}</div>
                 <div className="text-neutral-600">{l.postalCode} {l.city}</div>
-                <div className="mt-1"><DuplicateBadge duplicateOf={l.duplicateOf} duplicateCount={l.duplicateCount} /></div>
+                {l.geo.municipality && l.geo.municipality !== l.city && (
+                  <div className="text-xs text-neutral-500">Gemeinde {l.geo.municipality}</div>
+                )}
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <AreaBadge geo={l.geo} />
+                  <GeoWarnings geo={l.geo} postalCode={l.postalCode} />
+                  <DuplicateBadge duplicateOf={l.duplicateOf} duplicateCount={l.duplicateCount} />
+                </div>
               </td>
               <td className="px-4 py-3 align-top">
                 <div>{sourceLabel(l.utmSource)}</div>
@@ -106,6 +114,8 @@ function MobileCards({ leads, onStatusChange, savingId }: Props) {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <StatusSelect status={l.status} disabled={savingId === l.id} label={`Status von ${l.firstName} ${l.lastName}`}
               onChange={(s) => onStatusChange(l, s)} />
+            <AreaBadge geo={l.geo} />
+            <GeoWarnings geo={l.geo} postalCode={l.postalCode} />
             <DuplicateBadge duplicateOf={l.duplicateOf} duplicateCount={l.duplicateCount} />
           </div>
         </li>

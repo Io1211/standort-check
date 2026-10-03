@@ -1,12 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { apiFetch } from '../../api'
-import { LineChart, type Series } from '../charts/LineChart'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { apiFetch, cachedAdminFetch, readAdminCache } from '../../api'
+import type { Series } from '../charts/LineChart'
 import { OTHER_COLOR, sourceColors } from '../charts/palette'
-import { QualifiedBars, type BarItem } from '../charts/QualifiedBars'
+import type { BarItem } from '../charts/QualifiedBars'
 import { CampaignTable } from '../components/CampaignTable'
 import { rate, sum } from '../stats'
 import { campaignLabel, sourceLabel } from '../format'
-import type { CampaignStats } from '../types'
+import type { CampaignStats, GeoStats } from '../types'
 
 interface WeeklyRow {
   week: string
@@ -20,6 +20,9 @@ const PERIODS = [
   { days: 0, label: 'Gesamt' },
 ]
 
+const LineChart = lazy(() => import('../charts/LineChart').then((m) => ({ default: m.LineChart })))
+const QualifiedBars = lazy(() => import('../charts/QualifiedBars').then((m) => ({ default: m.QualifiedBars })))
+
 // Answers "which campaigns bring leads, and which of them are any good?".
 export function DashboardPage() {
   const [days, setDays] = useState(30)
@@ -28,18 +31,22 @@ export function DashboardPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    apiFetch<{ campaigns: CampaignStats[] }>(`/leads/stats?days=${days}`)
-      .then((d) => setStats({ days, rows: d.campaigns }))
-      .catch((err) => setError(err.message))
+    const controller = new AbortController()
+    cachedAdminFetch<{ campaigns: CampaignStats[] }>(`/leads/stats?days=${days}`, controller.signal)
+      .then((d) => { if (!controller.signal.aborted) { setStats({ days, rows: d.campaigns }); setError('') } })
+      .catch((err) => { if (!controller.signal.aborted) setError(err.message) })
+    return () => controller.abort()
   }, [days])
 
   useEffect(() => {
-    apiFetch<{ weeks: string[]; rows: WeeklyRow[] }>('/leads/timeseries?weeks=8')
-      .then(setWeekly)
-      .catch((err) => setError(err.message))
+    const controller = new AbortController()
+    cachedAdminFetch<{ weeks: string[]; rows: WeeklyRow[] }>('/leads/timeseries?weeks=8', controller.signal)
+      .then((d) => { if (!controller.signal.aborted) setWeekly(d) })
+      .catch((err) => { if (!controller.signal.aborted) setError(err.message) })
+    return () => controller.abort()
   }, [])
 
-  const rows = stats?.days === days ? stats.rows : null
+  const rows = stats?.days === days ? stats.rows : readAdminCache<{ campaigns: CampaignStats[] }>(`/leads/stats?days=${days}`)?.campaigns ?? null
   const periodLabel = PERIODS.find((p) => p.days === days)?.label ?? ''
 
   return (
@@ -59,6 +66,8 @@ export function DashboardPage() {
       {error && <p role="alert" className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
       <KpiTiles rows={rows} periodLabel={periodLabel} />
+
+      <ServiceAreaCard />
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <Card eyebrow="Letzte 8 Wochen" title="Leads je Quelle" note="Eindeutige Leads (ohne Duplikate) pro Kalenderwoche.">
@@ -107,7 +116,7 @@ function Card({ eyebrow, title, note, children }: { eyebrow: string; title: stri
         <div className="text-xs font-medium tracking-widest text-neutral-500 uppercase">{eyebrow}</div>
         <h2 className="text-xl font-bold">{title}</h2>
       </div>
-      <div className="flex-1">{children}</div>
+      <div className="flex-1"><Suspense fallback={<Loading />}>{children}</Suspense></div>
       <p className="mt-4 text-xs text-neutral-500">{note}</p>
     </section>
   )
@@ -187,4 +196,75 @@ function Loading() {
 
 function Empty({ text }: { text: string }) {
   return <p className="py-10 text-center text-sm text-neutral-500">{text}</p>
+}
+
+// Service area overview (all unique leads, independent of the period) and a
+// button to geocode leads that have no geo data yet.
+function ServiceAreaCard() {
+  const [data, setData] = useState<{ geo: GeoStats; enabled: boolean } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  function load() {
+    apiFetch<{ geo: GeoStats; enabled: boolean }>('/leads/geo-stats').then(setData).catch(() => setData(null))
+  }
+  useEffect(load, [])
+
+  async function backfill() {
+    setBusy(true)
+    setMessage('')
+    try {
+      const r = await apiFetch<{ processed: number; ok: number; notFound: number; errors: number; remaining: number }>(
+        '/leads/geocode-missing', { method: 'POST' })
+      setMessage(`${r.processed} geprüft: ${r.ok} gefunden, ${r.notFound} nicht gefunden, ${r.errors} Fehler.` +
+        (r.remaining > 0 ? ` Noch ${r.remaining} offen – erneut klicken.` : ''))
+      load()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Abruf fehlgeschlagen.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!data) return null
+  const g = data.geo
+  const tiles = [
+    { label: 'Im Einzugsgebiet', value: g.inArea, href: '/admin?area=in' },
+    { label: 'Außerhalb', value: g.outOfArea, href: '/admin?area=out' },
+    { label: 'Ohne Geodaten', value: g.noGeo + g.notFound, href: '/admin?area=unknown' },
+  ]
+
+  return (
+    <section className="rounded-lg bg-white p-5 ring-1 ring-neutral-200">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-medium tracking-widest text-neutral-500 uppercase">Alle eindeutigen Leads</div>
+          <h2 className="text-xl font-bold">Einzugsgebiet</h2>
+          <p className="text-xs text-neutral-500">
+            {g.configured ? `Bundesländer: ${g.states.map(capitalize).sort().join(', ')}` : 'Kein Einzugsgebiet konfiguriert (SERVICE_AREA_STATES).'}
+          </p>
+        </div>
+        {data.enabled && g.noGeo > 0 && (
+          <button onClick={backfill} disabled={busy}
+            className="rounded-md px-3 py-1.5 text-sm font-medium ring-1 ring-neutral-300 hover:bg-neutral-50 disabled:opacity-60">
+            {busy ? 'Rufe ab …' : `Fehlende Geodaten abrufen (${g.noGeo})`}
+          </button>
+        )}
+      </div>
+      {!data.enabled && <p className="mb-3 text-sm text-neutral-600">Geodaten sind deaktiviert: GEOAPIFY_API_KEY ist nicht gesetzt.</p>}
+      <div className="grid grid-cols-3 gap-3">
+        {tiles.map((t) => (
+          <a key={t.label} href={t.href} className="rounded-md bg-neutral-50 p-3 hover:bg-neutral-100">
+            <div className="text-2xl font-semibold">{t.value}</div>
+            <div className="text-xs text-neutral-600">{t.label}</div>
+          </a>
+        ))}
+      </div>
+      {message && <p role="status" className="mt-3 text-sm text-neutral-700">{message}</p>}
+    </section>
+  )
+}
+
+function capitalize(s: string): string {
+  return s.replace(/(^|[-\s])\p{L}/gu, (m) => m.toUpperCase())
 }

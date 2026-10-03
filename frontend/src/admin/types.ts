@@ -22,6 +22,7 @@ export interface AdminLead {
   status: LeadStatus
   duplicateOf: string | null
   duplicateCount: number
+  geo: GeoInfo
   createdAt: string
 }
 
@@ -56,4 +57,32 @@ export interface CampaignStats {
   contacted: number
   qualified: number
   notQualified: number
+}
+
+export type GeoStatus = '' | 'ok' | 'not_found' | 'error'
+
+export interface GeoInfo {
+  status: GeoStatus
+  lat: number | null
+  lon: number | null
+  municipality: string
+  county: string
+  state: string
+  postcode: string
+  formatted: string
+  resultType: string
+  confidence: number | null
+  checkedAt: string | null
+  inServiceArea: boolean | null
+  postcodeMismatch: boolean
+  imprecise: boolean
+}
+
+export interface GeoStats {
+  inArea: number
+  outOfArea: number
+  noGeo: number
+  notFound: number
+  states: string[]
+  configured: boolean
 }

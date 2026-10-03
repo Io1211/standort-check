@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/csv"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata" // embed tz database: serverless images may not ship one
@@ -24,6 +25,7 @@ var csvHeader = []string{
 	"street", "house_number", "postal_code", "city", "parcel_note",
 	"utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
 	"gclid", "fbclid", "referrer",
+	"geo_municipality", "geo_county", "geo_state", "geo_lat", "geo_lon", "in_service_area", "geo_warning",
 }
 
 // WriteLeadsCSV writes leads in a format that opens correctly in German
@@ -52,6 +54,8 @@ func WriteLeadsCSV(w io.Writer, leads []LeadListItem) error {
 			l.Street, l.HouseNumber, l.PostalCode, l.City, l.ParcelNote,
 			l.UTMSource, l.UTMMedium, l.UTMCampaign, l.UTMContent, l.UTMTerm,
 			l.GCLID, l.FBCLID, l.Referrer,
+			l.Geo.Municipality, l.Geo.County, l.Geo.State, coord(l.Geo.Lat), coord(l.Geo.Lon),
+			areaLabel(l.Geo), geoWarning(l.Geo),
 		}
 		for i := range record {
 			record[i] = csvSafe(record[i])
@@ -80,4 +84,37 @@ func csvSafe(s string) string {
 
 func exportFilename(now time.Time) string {
 	return "standort-check-leads-" + now.In(berlin).Format("2006-01-02") + ".csv"
+}
+
+func coord(v *float64) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*v, 'f', 6, 64)
+}
+
+// areaLabel is "ja", "nein" or "" (unknown) – plain words for Excel filters.
+func areaLabel(g GeoInfo) string {
+	switch {
+	case g.InServiceArea == nil:
+		return ""
+	case *g.InServiceArea:
+		return "ja"
+	default:
+		return "nein"
+	}
+}
+
+func geoWarning(g GeoInfo) string {
+	var w []string
+	if g.Status == GeoStatusNotFound {
+		w = append(w, "Adresse nicht gefunden")
+	}
+	if g.PostcodeMismatch {
+		w = append(w, "PLZ passt nicht ("+g.Postcode+")")
+	}
+	if g.Imprecise {
+		w = append(w, "Lage ungenau")
+	}
+	return strings.Join(w, ", ")
 }

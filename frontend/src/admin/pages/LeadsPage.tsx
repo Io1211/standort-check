@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router'
-import { apiFetch } from '../../api'
+import { cachedAdminFetch } from '../../api'
 import { LeadFilters, type Filters } from '../components/LeadFilters'
 import { LeadTable, type SortKey } from '../components/LeadTable'
 import type { AdminLead, CampaignStats, LeadListResponse, LeadStatus } from '../types'
@@ -12,7 +12,8 @@ export function LeadsPage() {
   const [params, setParams] = useSearchParams()
   const flash = (useLocation().state as { flash?: string } | null)?.flash
   const [data, setData] = useState<LeadListResponse | null>(null)
-  const [campaigns, setCampaigns] = useState<CampaignStats[]>([])
+  const [campaigns, setCampaigns] = useState<Pick<CampaignStats, 'source' | 'campaign'>[]>([])
+  const [settledQuery, setSettledQuery] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
 
   const filters: Filters = {
@@ -21,27 +22,34 @@ export function LeadsPage() {
     source: params.get('source') ?? '',
     campaign: params.get('campaign') ?? '',
     hideDuplicates: params.get('hideDuplicates') === 'true',
+    area: params.get('area') ?? '',
   }
   const sort = (params.get('sort') ?? 'created_at') as SortKey
   const desc = params.get('order') !== 'asc'
   const page = Number(params.get('page') ?? '1')
 
   const query = params.toString()
+  const loading = settledQuery !== query
 
   useEffect(() => {
     let cancelled = false
-    apiFetch<LeadListResponse>(`/leads?${query}`)
+    const controller = new AbortController()
+    cachedAdminFetch<LeadListResponse>(`/leads?${query}`, controller.signal)
       .then((d) => !cancelled && (setData(d), setLoadError('')))
       .catch((err) => !cancelled && setLoadError(err.message))
+      .finally(() => !cancelled && setSettledQuery(query))
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [query])
 
   useEffect(() => {
-    apiFetch<{ campaigns: CampaignStats[] }>('/leads/stats')
+    const controller = new AbortController()
+    cachedAdminFetch<{ campaigns: Pick<CampaignStats, 'source' | 'campaign'>[] }>('/leads/filter-options', controller.signal)
       .then((d) => setCampaigns(d.campaigns))
       .catch(() => {}) // only used for the filter dropdowns
+    return () => controller.abort()
   }, [])
 
   const update = useCallback(
@@ -92,6 +100,7 @@ export function LeadsPage() {
       </div>
 
       <LeadFilters filters={filters} campaigns={campaigns} onChange={onFilterChange} />
+      {loading && <p role="status" className="text-sm text-neutral-500">Leads werden geladen …</p>}
 
       {flash && <p role="status" className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-800">{flash}</p>}
       {loadError && <p role="alert" className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</p>}
@@ -103,7 +112,7 @@ export function LeadsPage() {
         </p>
       )}
       {data && data.leads.length > 0 && (
-        <>
+        <div aria-busy={loading} inert={loading} className={loading ? 'space-y-4 opacity-60' : 'space-y-4'}>
           <LeadTable leads={data.leads} sort={sort} desc={desc} onSort={onSort} onStatusChange={onStatusChange} savingId={saving} />
           <div className="flex items-center justify-between text-sm text-neutral-600">
             <span>{from}–{to} von {data.total}</span>
@@ -114,7 +123,7 @@ export function LeadsPage() {
                 className="rounded-md px-3 py-1.5 ring-1 ring-neutral-300 hover:bg-white disabled:opacity-40">Weiter</button>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

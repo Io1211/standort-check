@@ -75,12 +75,14 @@ func (s *Server) handleListLeads(w http.ResponseWriter, r *http.Request) {
 		pageSize = defaultPageSize
 	}
 	f.Limit, f.Offset = pageSize, (page-1)*pageSize
+	f.AreaStates = s.area.States()
 
 	leads, total, err := s.repo.ListLeads(r.Context(), f)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
+	s.deriveGeo(leads)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"leads":    leads,
 		"total":    total,
@@ -104,6 +106,7 @@ func (s *Server) handleGetLead(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	detail.Lead.Geo.derive(detail.Lead.PostalCode, s.area)
 	writeJSON(w, http.StatusOK, detail)
 }
 
@@ -144,11 +147,13 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	f.AreaStates = s.area.States()
 	leads, _, err := s.repo.ListLeads(r.Context(), f) // Limit 0 = all
 	if err != nil {
 		internalError(w, err)
 		return
 	}
+	s.deriveGeo(leads)
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+exportFilename(time.Now())+`"`)
@@ -166,6 +171,15 @@ func (s *Server) handleCampaignStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"campaigns": stats})
+}
+
+func (s *Server) handleLeadFilterOptions(w http.ResponseWriter, r *http.Request) {
+	options, err := s.repo.LeadFilterOptions(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"campaigns": options})
 }
 
 func (s *Server) handleWeeklyLeads(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +242,11 @@ func parseLeadFilter(q url.Values) (LeadFilter, error) {
 		if !f.Status.Valid() {
 			return f, filterError("Ungültiger Status.")
 		}
+	}
+	switch f.Area = q.Get("area"); f.Area {
+	case "", "in", "out", "unknown":
+	default:
+		return f, filterError("Ungültiger Filter für das Einzugsgebiet.")
 	}
 	return f, nil
 }
