@@ -3,7 +3,6 @@ package backend
 import (
 	"fmt"
 	"testing"
-	"time"
 )
 
 // lead builds a normalized Lead from raw input, exactly like production does.
@@ -13,7 +12,7 @@ func lead(email, phone, street, houseNumber, postalCode, city string) Lead {
 		Email: email, Phone: phone,
 		Street: street, HouseNumber: houseNumber, PostalCode: postalCode, City: city,
 		Consent: true,
-	}, time.Time{})
+	})
 }
 
 func TestIsDuplicate(t *testing.T) {
@@ -108,7 +107,7 @@ func TestCaseExamples(t *testing.T) {
 			}
 			continue
 		}
-		l := buildLead(req, time.Time{})
+		l := buildLead(req)
 		l.ID = fmt.Sprintf("#%d", i+1)
 		if dup := pickDuplicate(l, stored); dup != nil {
 			duplicateOf[i+1] = dup.ID

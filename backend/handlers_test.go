@@ -57,6 +57,14 @@ func TestCreateLead_HoneypotLooksLikeSuccess(t *testing.T) {
 	}
 }
 
+func TestCreateLead_RejectsInvalidUTF8(t *testing.T) {
+	// "Hauptstraße" encoded as Latin-1: ß = 0xDF, which is invalid UTF-8.
+	body := "{\"street\":\"Hauptstra\xdfe\"}"
+	if rec := post(t, body); rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
 func TestCreateLead_BodyTooLarge(t *testing.T) {
 	big := `{"firstName":"` + strings.Repeat("a", 64<<10) + `"}`
 	if rec := post(t, big); rec.Code != http.StatusBadRequest {

@@ -52,13 +52,13 @@ func (r *Repository) CreateLead(ctx context.Context, lead Lead) (Lead, error) {
 			city, city_normalized,
 			parcel_note,
 			utm_source, utm_medium, utm_campaign, utm_content, utm_term,
-			gclid, fbclid, referrer, landing_page,
-			consent_at, status, duplicate_of
+			gclid, fbclid, referrer,
+			status, duplicate_of
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-			$15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
+			$15, $16, $17, $18, $19, $20, $21, $22, $23, $24
 		)
-		RETURNING id, created_at, updated_at`,
+		RETURNING id, created_at`,
 		lead.FirstName, lead.LastName,
 		lead.Email, lead.EmailNormalized,
 		lead.Phone, lead.PhoneNormalized,
@@ -70,9 +70,9 @@ func (r *Repository) CreateLead(ctx context.Context, lead Lead) (Lead, error) {
 		nullIfEmpty(lead.UTMSource), nullIfEmpty(lead.UTMMedium), nullIfEmpty(lead.UTMCampaign),
 		nullIfEmpty(lead.UTMContent), nullIfEmpty(lead.UTMTerm),
 		nullIfEmpty(lead.GCLID), nullIfEmpty(lead.FBCLID),
-		nullIfEmpty(lead.Referrer), nullIfEmpty(lead.LandingPage),
-		lead.ConsentAt, lead.Status, lead.DuplicateOf,
-	).Scan(&lead.ID, &lead.CreatedAt, &lead.UpdatedAt)
+		nullIfEmpty(lead.Referrer),
+		lead.Status, lead.DuplicateOf,
+	).Scan(&lead.ID, &lead.CreatedAt)
 	if err != nil {
 		return lead, fmt.Errorf("insert lead: %w", err)
 	}

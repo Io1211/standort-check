@@ -45,10 +45,6 @@ CREATE TABLE leads (
     gclid        TEXT,                       -- Google Ads click id
     fbclid       TEXT,                       -- Meta click id
     referrer     TEXT,
-    landing_page TEXT,
-
-    -- GDPR: when the user accepted the privacy notice
-    consent_at TIMESTAMPTZ NOT NULL,
 
     -- Sales workflow
     status TEXT NOT NULL DEFAULT 'new'
@@ -57,8 +53,8 @@ CREATE TABLE leads (
     -- Points to the oldest matching lead. Duplicates are stored, never rejected.
     duplicate_of UUID REFERENCES leads(id),
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    -- Also the time of GDPR consent: the form cannot be submitted without it.
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Duplicate lookup: narrow by address first, then compare email / phone.

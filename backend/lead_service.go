@@ -4,16 +4,14 @@ import (
 	"context"
 	"log"
 	"strings"
-	"time"
 )
 
 type LeadService struct {
 	repo *Repository
-	now  func() time.Time
 }
 
 func NewLeadService(repo *Repository) *LeadService {
-	return &LeadService{repo: repo, now: time.Now}
+	return &LeadService{repo: repo}
 }
 
 // Create runs the submission flow: validate → normalize → store (with
@@ -23,7 +21,7 @@ func (s *LeadService) Create(ctx context.Context, req CreateLeadRequest) (Lead, 
 		return Lead{}, verr
 	}
 
-	lead := buildLead(req, s.now())
+	lead := buildLead(req)
 
 	lead, err := s.repo.CreateLead(ctx, lead)
 	if err != nil {
@@ -38,7 +36,7 @@ func (s *LeadService) Create(ctx context.Context, req CreateLeadRequest) (Lead, 
 
 // buildLead trims raw values (keeping the customer's spelling) and computes
 // normalized values for duplicate detection. Expects a validated request.
-func buildLead(req CreateLeadRequest, now time.Time) Lead {
+func buildLead(req CreateLeadRequest) Lead {
 	t := strings.TrimSpace
 	houseNumber := strings.Join(strings.Fields(req.HouseNumber), " ")
 
@@ -75,10 +73,8 @@ func buildLead(req CreateLeadRequest, now time.Time) Lead {
 		GCLID:       truncate(req.GCLID, 255),
 		FBCLID:      truncate(req.FBCLID, 255),
 		Referrer:    truncate(req.Referrer, 1000),
-		LandingPage: truncate(req.LandingPage, 1000),
 
-		ConsentAt: now,
-		Status:    LeadStatusNew,
+		Status: LeadStatusNew,
 	}
 }
 

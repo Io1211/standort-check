@@ -3,9 +3,11 @@ package backend
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
 
 // handleCreateLead is the public endpoint behind the form.
@@ -14,10 +16,20 @@ import (
 // return its ID: a public endpoint must not reveal whether an email address
 // or address already exists in our system.
 func (s *Server) handleCreateLead(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<10))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Ungültige Anfrage.")
+		return
+	}
+	// encoding/json silently replaces invalid UTF-8 with U+FFFD, which would
+	// store "Hauptstra�e". Reject such bodies (e.g. Latin-1 encoded) instead.
+	if !utf8.Valid(body) {
+		writeError(w, http.StatusBadRequest, "Ungültige Zeichenkodierung (UTF-8 erwartet).")
+		return
+	}
 
 	var req CreateLeadRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "Ungültige Anfrage.")
 		return
 	}
@@ -30,7 +42,7 @@ func (s *Server) handleCreateLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.leads.Create(r.Context(), req)
+	_, err = s.leads.Create(r.Context(), req)
 	var verr *ValidationError
 	switch {
 	case errors.As(err, &verr):

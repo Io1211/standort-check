@@ -54,15 +54,11 @@ type Lead struct {
 	GCLID       string
 	FBCLID      string
 	Referrer    string
-	LandingPage string
-
-	ConsentAt time.Time
 
 	Status      LeadStatus
 	DuplicateOf *string
 
 	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 // CreateLeadRequest is the JSON body of POST /api/leads. Nothing in it is
@@ -89,7 +85,6 @@ type CreateLeadRequest struct {
 	GCLID       string `json:"gclid"`
 	FBCLID      string `json:"fbclid"`
 	Referrer    string `json:"referrer"`
-	LandingPage string `json:"landingPage"`
 
 	// Honeypot: hidden in the form, real users leave it empty.
 	Website string `json:"website"`
