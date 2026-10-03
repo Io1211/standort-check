@@ -5,10 +5,12 @@ import { LeadFilters, type Filters } from '../components/LeadFilters'
 import { LeadTable, type SortKey } from '../components/LeadTable'
 import type { AdminLead, CampaignStats, LeadListResponse, LeadStatus } from '../types'
 import { useStatusUpdate } from '../useStatusUpdate'
+import { useAdminRevision } from '../useAdminRevision'
 
 // All filters live in the URL: reload, back button and shared links keep them,
 // and the CSV export uses exactly the same query.
 export function LeadsPage() {
+  const revision = useAdminRevision()
   const [params, setParams] = useSearchParams()
   const flash = (useLocation().state as { flash?: string } | null)?.flash
   const [data, setData] = useState<LeadListResponse | null>(null)
@@ -42,7 +44,7 @@ export function LeadsPage() {
       cancelled = true
       controller.abort()
     }
-  }, [query])
+  }, [query, revision])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -50,7 +52,7 @@ export function LeadsPage() {
       .then((d) => setCampaigns(d.campaigns))
       .catch(() => {}) // only used for the filter dropdowns
     return () => controller.abort()
-  }, [])
+  }, [revision])
 
   const update = useCallback(
     (patch: Record<string, string | boolean | number>) => {
