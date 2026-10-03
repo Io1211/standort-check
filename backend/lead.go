@@ -66,7 +66,8 @@ type Lead struct {
 // leads that were marked as duplicates of it.
 type LeadListItem struct {
 	Lead
-	DuplicateCount int `json:"duplicateCount"`
+	DuplicateCount int     `json:"duplicateCount"`
+	Geo            GeoInfo `json:"geo"`
 }
 
 // LeadSummary is a short reference to a related lead (original / duplicates).

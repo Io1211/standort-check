@@ -13,6 +13,10 @@ type Config struct {
 	SessionSecret     string
 	BrevoAPIKey       string
 	EmailFrom         string
+	// Geo enrichment (optional): without a key, leads are simply not geocoded.
+	GeoapifyAPIKey string
+	// Comma-separated federal states, e.g. "Sachsen,Hamburg".
+	ServiceAreaStates string
 }
 
 func LoadConfig() (Config, error) {
@@ -23,6 +27,8 @@ func LoadConfig() (Config, error) {
 		SessionSecret:     os.Getenv("SESSION_SECRET"),
 		BrevoAPIKey:       os.Getenv("BREVO_API_KEY"),
 		EmailFrom:         os.Getenv("EMAIL_FROM"),
+		GeoapifyAPIKey:    os.Getenv("GEOAPIFY_API_KEY"),
+		ServiceAreaStates: os.Getenv("SERVICE_AREA_STATES"),
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("DATABASE_URL is not set")

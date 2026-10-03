@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -13,11 +14,13 @@ import (
 
 // Server holds the dependencies shared by all handlers.
 type Server struct {
-	cfg   Config
-	db    *pgxpool.Pool
-	repo  *Repository
-	leads *LeadService
-	auth  *Auth
+	cfg    Config
+	db     *pgxpool.Pool
+	repo   *Repository
+	leads  *LeadService
+	auth   *Auth
+	mailer confirmationSender
+	area   ServiceArea
 }
 
 // NewApp wires config, database and routes. It is used by both the local
@@ -32,12 +35,20 @@ func NewApp(ctx context.Context) (http.Handler, error) {
 		return nil, err
 	}
 	repo := NewRepository(db)
+	leads := NewLeadService(repo)
+	if cfg.GeoapifyAPIKey != "" {
+		leads.WithGeocoder(NewGeoapify(cfg.GeoapifyAPIKey), repo)
+	} else {
+		log.Printf("geo enrichment disabled: GEOAPIFY_API_KEY is not set")
+	}
 	s := &Server{
-		cfg:   cfg,
-		db:    db,
-		repo:  repo,
-		leads: NewLeadService(repo),
-		auth:  NewAuth(cfg),
+		cfg:    cfg,
+		db:     db,
+		repo:   repo,
+		leads:  leads,
+		auth:   NewAuth(cfg),
+		mailer: newConfirmationSender(cfg),
+		area:   NewServiceArea(cfg.ServiceAreaStates),
 	}
 	return s.routes(), nil
 }
@@ -67,10 +78,14 @@ func (s *Server) routes() http.Handler {
 			r.Get("/leads", s.handleListLeads)
 			r.Get("/leads/export", s.handleExport)
 			r.Get("/leads/stats", s.handleCampaignStats)
+			r.Get("/leads/filter-options", s.handleLeadFilterOptions)
 			r.Get("/leads/timeseries", s.handleWeeklyLeads)
+			r.Get("/leads/geo-stats", s.handleGeoStats)
+			r.Post("/leads/geocode-missing", s.handleGeocodeMissing)
 			r.Get("/leads/{id}", s.handleGetLead)
 			r.Patch("/leads/{id}/status", s.handleUpdateStatus)
 			r.Delete("/leads/{id}", s.handleDeleteLead)
+			r.Post("/leads/{id}/geocode", s.handleGeocodeLead)
 
 			r.Get("/campaigns", s.handleListCampaigns)
 			r.Post("/campaigns", s.handleCreateCampaign)

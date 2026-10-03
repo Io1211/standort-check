@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, apiFetch } from '../../api'
+import { AreaBadge, GeoWarnings } from '../components/GeoBadge'
 import { StatusBadge, StatusSelect } from '../components/StatusBadge'
 import { formatAddress, formatDateTime, sourceLabel } from '../format'
 import type { LeadDetail, LeadSummary } from '../types'
@@ -76,10 +77,12 @@ export function LeadDetailPage() {
           <Row label="PLZ / Ort">{l.postalCode} {l.city}</Row>
           <Row label="Hinweis">{l.parcelNote ? <span className="whitespace-pre-line">{l.parcelNote}</span> : '–'}</Row>
           <Row label="Karte">
-            <a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`} target="_blank"
+            <a href={mapLink(l.geo.lat, l.geo.lon, address)} target="_blank"
               rel="noreferrer" className="underline">In OpenStreetMap öffnen ↗</a>
           </Row>
         </Section>
+
+        <GeoSection lead={l} onUpdated={(d) => setResult({ id, detail: d })} />
 
         <Section title="Herkunft">
           <Row label="Quelle">{sourceLabel(l.utmSource)}</Row>
@@ -198,4 +201,83 @@ function SummaryRow({ lead, backSearch }: { lead: LeadSummary; backSearch: strin
       <StatusBadge status={lead.status} />
     </li>
   )
+}
+
+// Geo data from Geoapify: where the plot is and whether we serve that area.
+function GeoSection({ lead: l, onUpdated }: { lead: LeadDetail['lead']; onUpdated: (d: LeadDetail) => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const g = l.geo
+
+  async function refresh(automatic = false) {
+    setBusy(true)
+    setError('')
+    try {
+      onUpdated(await apiFetch<LeadDetail>(`/leads/${l.id}/geocode`, { method: 'POST' }))
+    } catch (err) {
+      // An automatic attempt stays quiet if geo is simply not configured.
+      if (!(automatic && err instanceof ApiError && err.status === 503)) {
+        setError(err instanceof Error ? err.message : 'Abruf fehlgeschlagen.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Geoapify can take longer than the form submission waits. When sales
+  // opens a lead without geo data, fetch it now (once per lead).
+  const attempted = useRef<string | null>(null)
+  useEffect(() => {
+    if ((g.status === '' || g.status === 'error') && attempted.current !== l.id) {
+      attempted.current = l.id
+      void refresh(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per lead id
+  }, [l.id])
+
+  return (
+    <Section title="Lage & Einzugsgebiet">
+      <Row label="Einzugsgebiet">
+        <span className="flex flex-wrap gap-1">
+          <AreaBadge geo={g} />
+          <GeoWarnings geo={g} postalCode={l.postalCode} />
+          {g.status === 'ok' && g.inServiceArea === null && <span className="text-neutral-500">nicht konfiguriert</span>}
+        </span>
+      </Row>
+      {g.status === 'ok' && (
+        <>
+          <Row label="Gemeinde">{g.municipality || '–'}</Row>
+          <Row label="Landkreis">{g.county || '–'}</Row>
+          <Row label="Bundesland">{g.state || '–'}</Row>
+          <Row label="Gefunden als">{g.formatted || '–'}</Row>
+          <Row label="Koordinaten">
+            {g.lat !== null && g.lon !== null ? `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}` : '–'}
+            {g.imprecise && <span className="text-neutral-500"> (ungefähr: {resultTypeLabel(g.resultType)})</span>}
+          </Row>
+        </>
+      )}
+      {g.status === 'not_found' && (
+        <p className="text-neutral-600">Zu dieser Adresse wurde in Deutschland nichts gefunden – evtl. Tippfehler oder ausgedachte Adresse.</p>
+      )}
+      <Row label="Geprüft">{g.checkedAt ? formatDateTime(g.checkedAt) : 'noch nicht'}</Row>
+      <div className="pt-1">
+        <button onClick={() => refresh()} disabled={busy}
+          className="rounded-md px-3 py-1.5 text-sm font-medium ring-1 ring-neutral-300 hover:bg-neutral-50 disabled:opacity-60">
+          {busy ? 'Rufe Geodaten ab … (kann bis zu 15 s dauern)' : 'Geodaten neu abrufen'}
+        </button>
+        {error && <p role="alert" className="mt-2 rounded-md bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+      </div>
+    </Section>
+  )
+}
+
+function mapLink(lat: number | null, lon: number | null, address: string): string {
+  return lat !== null && lon !== null
+    ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=17/${lat}/${lon}`
+    : `https://www.openstreetmap.org/search?query=${encodeURIComponent(address)}`
+}
+
+function resultTypeLabel(t: string): string {
+  const labels: Record<string, string> = { street: 'Straße', postcode: 'PLZ-Gebiet', city: 'Ort', suburb: 'Ortsteil', county: 'Landkreis' }
+  return labels[t] ?? t
 }

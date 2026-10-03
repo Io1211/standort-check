@@ -2,8 +2,8 @@ import type { ReactNode } from 'react'
 
 export function PageShell({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto max-w-xl px-4 pt-8 pb-16 sm:pt-12">
-      <div className="mx-auto mb-8 flex size-24 items-center justify-center rounded-full bg-white sm:size-28">
+    <main className="mx-auto w-full max-w-xl px-4 pt-6 pb-16 sm:pt-12">
+      <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full bg-white sm:mb-8 sm:size-28">
         <PinIcon />
       </div>
       {children}

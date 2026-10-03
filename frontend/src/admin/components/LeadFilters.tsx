@@ -8,6 +8,7 @@ export interface Filters {
   source: string
   campaign: string
   hideDuplicates: boolean
+  area: string
 }
 
 export function LeadFilters({
@@ -16,7 +17,7 @@ export function LeadFilters({
   onChange,
 }: {
   filters: Filters
-  campaigns: CampaignStats[]
+  campaigns: Pick<CampaignStats, 'source' | 'campaign'>[]
   onChange: (patch: Partial<Filters>) => void
 }) {
   // Search is debounced so we don't query on every keystroke.
@@ -29,7 +30,7 @@ export function LeadFilters({
   }
   useEffect(() => {
     if (search === filters.search) return
-    const t = setTimeout(() => onChange({ search }), 300)
+    const t = setTimeout(() => onChange({ search }), 180)
     return () => clearTimeout(t)
   }, [search, filters.search, onChange])
 
@@ -59,6 +60,13 @@ export function LeadFilters({
       <select aria-label="Kampagne" value={filters.campaign} onChange={(e) => onChange({ campaign: e.target.value })} className={select}>
         <option value="">Alle Kampagnen</option>
         {campaignOptions.map((c) => <option key={c} value={c || NO_VALUE}>{campaignLabel(c)}</option>)}
+      </select>
+
+      <select aria-label="Einzugsgebiet" value={filters.area} onChange={(e) => onChange({ area: e.target.value })} className={select}>
+        <option value="">Einzugsgebiet: alle</option>
+        <option value="in">Im Einzugsgebiet</option>
+        <option value="out">Außerhalb</option>
+        <option value="unknown">Unbekannt (keine Geodaten)</option>
       </select>
 
       <label className="flex items-center gap-2 text-sm">

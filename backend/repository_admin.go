@@ -25,7 +25,9 @@ type LeadFilter struct {
 	Source         string     // "" = all, NoValue = leads without utm_source
 	Campaign       string     // "" = all, NoValue = leads without utm_campaign
 	HideDuplicates bool
-	Sort           string // key of sortColumns
+	Area           string   // "" = all, "in", "out", "unknown" (service area)
+	AreaStates     []string // configured service area (lowercase), set by the handler
+	Sort           string   // key of sortColumns
 	Desc           bool
 	Limit          int // 0 = no limit (export)
 	Offset         int
@@ -51,7 +53,11 @@ const leadSelect = `
 	       COALESCE(l.utm_content, ''), COALESCE(l.utm_term, ''),
 	       COALESCE(l.gclid, ''), COALESCE(l.fbclid, ''), COALESCE(l.referrer, ''),
 	       l.status, l.duplicate_of::text, l.created_at,
-	       (SELECT count(*) FROM leads d WHERE d.duplicate_of = l.id)
+	       (SELECT count(*) FROM leads d WHERE d.duplicate_of = l.id),
+	       COALESCE(l.geo_status, ''), l.geo_lat, l.geo_lon,
+	       COALESCE(l.geo_municipality, ''), COALESCE(l.geo_county, ''), COALESCE(l.geo_state, ''),
+	       COALESCE(l.geo_postcode, ''), COALESCE(l.geo_formatted, ''), COALESCE(l.geo_result_type, ''),
+	       l.geo_confidence::float8, l.geo_checked_at
 	FROM leads l`
 
 func scanLead(row pgx.Row) (LeadListItem, error) {
@@ -60,7 +66,11 @@ func scanLead(row pgx.Row) (LeadListItem, error) {
 		&l.Street, &l.HouseNumber, &l.PostalCode, &l.City, &l.ParcelNote,
 		&l.UTMSource, &l.UTMMedium, &l.UTMCampaign, &l.UTMContent, &l.UTMTerm,
 		&l.GCLID, &l.FBCLID, &l.Referrer,
-		&l.Status, &l.DuplicateOf, &l.CreatedAt, &l.DuplicateCount)
+		&l.Status, &l.DuplicateOf, &l.CreatedAt, &l.DuplicateCount,
+		&l.Geo.Status, &l.Geo.Lat, &l.Geo.Lon,
+		&l.Geo.Municipality, &l.Geo.County, &l.Geo.State,
+		&l.Geo.Postcode, &l.Geo.Formatted, &l.Geo.ResultType,
+		&l.Geo.Confidence, &l.Geo.CheckedAt)
 	return l, err
 }
 
@@ -108,6 +118,17 @@ func (f LeadFilter) where() (string, []any) {
 		conds = append(conds, "l.utm_campaign IS NULL")
 	default:
 		conds = append(conds, "l.utm_campaign = "+arg(f.Campaign))
+	}
+	// Service area: only meaningful when an area is configured.
+	if len(f.AreaStates) > 0 {
+		switch f.Area {
+		case "in":
+			conds = append(conds, "l.geo_status = 'ok' AND lower(l.geo_state) = ANY("+arg(f.AreaStates)+")")
+		case "out":
+			conds = append(conds, "l.geo_status = 'ok' AND NOT (lower(COALESCE(l.geo_state, '')) = ANY("+arg(f.AreaStates)+"))")
+		case "unknown":
+			conds = append(conds, "(l.geo_status IS NULL OR l.geo_status <> 'ok')")
+		}
 	}
 	if f.HideDuplicates {
 		conds = append(conds, "l.duplicate_of IS NULL")
@@ -227,6 +248,28 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status LeadSta
 	return nil
 }
 
+type LeadFilterOption struct {
+	Source   string `json:"source"`
+	Campaign string `json:"campaign"`
+}
+
+// LeadFilterOptions avoids computing status totals just to populate dropdowns.
+func (r *Repository) LeadFilterOptions(ctx context.Context) ([]LeadFilterOption, error) {
+	rows, err := r.db.Query(ctx, `SELECT DISTINCT COALESCE(utm_source, ''), COALESCE(utm_campaign, '') FROM leads ORDER BY 1, 2`)
+	if err != nil {
+		return nil, fmt.Errorf("lead filter options: %w", err)
+	}
+	options, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (LeadFilterOption, error) {
+		var option LeadFilterOption
+		err := row.Scan(&option.Source, &option.Campaign)
+		return option, err
+	})
+	if options == nil {
+		options = []LeadFilterOption{}
+	}
+	return options, err
+}
+
 // CampaignStats groups leads by source and campaign. Duplicates are counted
 // in Total but not in the status columns, so one person submitting twice does
 // not make a campaign look better.
@@ -292,8 +335,8 @@ func (r *Repository) WeeklyLeadsBySource(ctx context.Context, n int) (weeks []st
 		       COALESCE(utm_source, ''), count(*)
 		FROM leads
 		WHERE duplicate_of IS NULL
-		  AND created_at AT TIME ZONE 'Europe/Berlin'
-		      >= date_trunc('week', now() AT TIME ZONE 'Europe/Berlin') - make_interval(weeks => $1 - 1)
+		  AND created_at >= (date_trunc('week', now() AT TIME ZONE 'Europe/Berlin')
+		      - make_interval(weeks => $1 - 1)) AT TIME ZONE 'Europe/Berlin'
 		GROUP BY 1, 2
 		ORDER BY 1, 2`, n)
 	if err != nil {

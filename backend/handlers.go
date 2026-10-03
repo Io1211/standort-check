@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -42,7 +43,7 @@ func (s *Server) handleCreateLead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.leads.Create(r.Context(), req)
+	lead, err := s.leads.Create(r.Context(), req)
 	var verr *ValidationError
 	switch {
 	case errors.As(err, &verr):
@@ -55,6 +56,22 @@ func (s *Server) handleCreateLead(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError,
 			"Ihre Anfrage konnte gerade nicht gespeichert werden. Bitte versuchen Sie es in einigen Minuten erneut.")
 	default:
-		writeJSON(w, http.StatusCreated, map[string]string{"status": "received"})
+		confirmationSent := false
+		if s.mailer != nil {
+			// Finish this bounded send before returning: a serverless runtime
+			// can freeze background goroutines when the response is complete.
+			// A browser disconnect must not cancel mail for an already saved lead.
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), confirmationTimeout)
+			err := s.mailer.SendConfirmation(ctx, lead)
+			cancel()
+			if err != nil {
+				log.Printf("confirmation email failed for lead %s: %v", lead.ID, err)
+			} else {
+				confirmationSent = true
+			}
+		} else {
+			log.Printf("confirmation email disabled: BREVO_API_KEY and EMAIL_FROM must be configured")
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"status": "received", "confirmationSent": confirmationSent})
 	}
 }

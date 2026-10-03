@@ -84,11 +84,11 @@ export function LeadForm() {
 
     setSubmitting(true)
     try {
-      await apiFetch('/leads', {
+      const result = await apiFetch<{ confirmationSent?: boolean }>('/leads', {
         method: 'POST',
         body: JSON.stringify({ ...values, ...getAttribution() }),
       })
-      navigate('/standort-check/danke', { replace: true })
+      navigate('/standort-check/danke', { replace: true, state: { confirmationSent: result.confirmationSent === true } })
     } catch (err) {
       if (err instanceof ApiError && err.fields) {
         setErrors(err.fields as FieldErrors)
@@ -119,34 +119,34 @@ export function LeadForm() {
           <label htmlFor="phoneCountryCode" className="sr-only">Ländervorwahl</label>
           <select id="phoneCountryCode" name="phoneCountryCode" value={values.phoneCountryCode}
             onChange={onCountryCodeChange} autoComplete="tel-country-code"
-            className="shrink-0 cursor-pointer border-r border-neutral-200 bg-transparent pr-2 pl-4 text-base text-ink outline-none">
+            className="min-h-14 max-w-[45%] shrink-0 cursor-pointer border-r border-neutral-200 bg-transparent pr-2 pl-3 text-base text-ink outline-none sm:pl-4">
             {COUNTRY_CODES.map((c) => (
               <option key={c.code} value={c.code}>{c.label}</option>
             ))}
           </select>
           <label htmlFor="phone" className="sr-only">Telefonnummer</label>
           <input id="phone" name="phone" type="tel" inputMode="numeric" autoComplete="tel-national"
-            placeholder="Telefonnummer, z. B. 170 1234567" value={values.phone}
+            placeholder="Telefonnummer" value={values.phone}
             onChange={onPhoneChange} onBlur={onBlur}
             aria-invalid={errors.phone ? true : undefined}
             aria-describedby={errors.phone ? 'phone-error' : undefined}
-            className="w-full min-w-0 bg-transparent px-4 py-4 text-base text-ink outline-none placeholder:text-neutral-400" />
+            className="w-full min-w-0 bg-transparent px-3 py-4 text-base text-ink outline-none placeholder:text-neutral-400 sm:px-4" />
         </div>
         <FieldError id="phone-error" message={errors.phone} />
       </div>
 
-      <fieldset className="space-y-4 pt-4">
+      <fieldset className="min-w-0 space-y-4 pt-4">
         <legend className="text-lg font-semibold">Adresse des Grundstücks</legend>
         <p className="-mt-2 text-sm text-ink/70">Der Standort-Check ist derzeit nur für Grundstücke in Deutschland möglich.</p>
 
-        <div className="grid grid-cols-[1fr_7.5rem] items-start gap-4">
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(0,1fr)_7.5rem]">
           <Field id="street" label="Straße" placeholder="Straße" autoComplete="address-line1"
             value={values.street} onChange={onChange} onBlur={onBlur} error={errors.street} />
           <Field id="houseNumber" label="Hausnummer (falls vorhanden)" placeholder="Nr." autoComplete="off"
             value={values.houseNumber} onChange={onChange} onBlur={onBlur} error={errors.houseNumber} />
         </div>
 
-        <div className="grid grid-cols-[7.5rem_1fr] items-start gap-4">
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
           <Field id="postalCode" label="Postleitzahl" placeholder="PLZ" autoComplete="postal-code"
             inputMode="numeric" maxLength={5} value={values.postalCode} onChange={onChange} onBlur={onBlur}
             error={errors.postalCode} />
@@ -158,7 +158,9 @@ export function LeadForm() {
           <label htmlFor="parcelNote" className="sr-only">Flurstück oder Hinweise (optional)</label>
           <textarea id="parcelNote" name="parcelNote" rows={2} value={values.parcelNote} onChange={onChange}
             placeholder="Noch keine Hausnummer? Flurstück oder Hinweise (optional)"
-            className="block w-full resize-y bg-transparent px-5 py-4 text-base text-ink outline-none placeholder:text-neutral-400" />
+            aria-invalid={errors.parcelNote ? true : undefined}
+            aria-describedby={errors.parcelNote ? 'parcelNote-error' : undefined}
+            className="block min-h-28 w-full min-w-0 resize-y bg-transparent px-4 py-4 text-base text-ink outline-none placeholder:text-neutral-400 sm:px-5" />
           <FieldError id="parcelNote-error" message={errors.parcelNote} />
         </div>
       </fieldset>
@@ -177,7 +179,7 @@ export function LeadForm() {
             aria-invalid={errors.consent ? true : undefined}
             aria-describedby={errors.consent ? 'consent-error' : undefined}
             className="mt-1 size-5 shrink-0 accent-ink" />
-          <span>
+          <span className="min-w-0 break-words">
             Ich bin einverstanden, dass meine Angaben zur Bearbeitung meiner Anfrage gespeichert werden und mich
             das Team per Telefon oder E-Mail kontaktiert. Details in der{' '}
             <Link to="/datenschutz" target="_blank" className="underline underline-offset-2">Datenschutzerklärung</Link>.
@@ -191,8 +193,8 @@ export function LeadForm() {
       )}
 
       <button type="submit" disabled={submitting}
-        className="mt-2 flex w-full flex-col items-center rounded-full bg-accent px-6 py-4 text-white transition hover:bg-accent-dark disabled:cursor-wait disabled:opacity-70">
-        <span className="text-xl font-bold">{submitting ? 'Wird gesendet …' : 'Standort-Check anfragen!'}</span>
+        className="mt-2 flex min-h-14 w-full flex-col items-center rounded-full bg-accent px-4 py-4 text-center text-white transition hover:bg-accent-dark disabled:cursor-wait disabled:opacity-70 sm:px-6">
+        <span className="text-lg font-bold sm:text-xl">{submitting ? 'Wird gesendet …' : 'Standort-Check anfragen!'}</span>
         <span className="text-sm opacity-90">Kostenlos und unverbindlich</span>
       </button>
     </form>

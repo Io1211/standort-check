@@ -1,6 +1,8 @@
 import { PageShell } from '../components/PageShell'
+import { useLocation } from 'react-router'
 
 export function SuccessPage() {
+  const state = useLocation().state as { confirmationSent?: boolean } | null
   return (
     <PageShell>
       <div className="rounded-md bg-white px-6 py-10 text-center sm:px-10">
@@ -14,7 +16,12 @@ export function SuccessPage() {
           Wir haben die Angaben zu Ihrem Grundstück erhalten. Unser Team prüft den Standort und meldet sich in Kürze
           telefonisch oder per E-Mail bei Ihnen.
         </p>
-        <p className="mt-4 text-sm text-ink/70">Eine Bestätigung haben wir Ihnen per E-Mail geschickt.</p>
+        {state?.confirmationSent === true && (
+          <p className="mt-4 text-sm text-ink/70">Eine Bestätigung haben wir Ihnen per E-Mail geschickt. Bitte prüfen Sie auch Ihren Spam-Ordner.</p>
+        )}
+        {state?.confirmationSent === false && (
+          <p className="mt-4 text-sm text-ink/70">Ihre Anfrage ist gespeichert. Die Bestätigung per E-Mail konnte gerade nicht versendet werden. Sie müssen das Formular nicht erneut absenden.</p>
+        )}
       </div>
     </PageShell>
   )

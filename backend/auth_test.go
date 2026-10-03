@@ -163,6 +163,7 @@ func TestAdminRoutesRequireAuth(t *testing.T) {
 		{"PATCH", "/api/leads/00000000-0000-0000-0000-000000000000/status"},
 		{"DELETE", "/api/leads/00000000-0000-0000-0000-000000000000"},
 		{"GET", "/api/leads/timeseries"},
+		{"GET", "/api/leads/filter-options"},
 	}
 	for _, rt := range routes {
 		if rec := do(h, rt.method, rt.path, `{"status":"new"}`, "application/json"); rec.Code != http.StatusUnauthorized {
