@@ -15,7 +15,9 @@ import (
 type Server struct {
 	cfg   Config
 	db    *pgxpool.Pool
+	repo  *Repository
 	leads *LeadService
+	auth  *Auth
 }
 
 // NewApp wires config, database and routes. It is used by both the local
@@ -29,10 +31,13 @@ func NewApp(ctx context.Context) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	repo := NewRepository(db)
 	s := &Server{
 		cfg:   cfg,
 		db:    db,
-		leads: NewLeadService(NewRepository(db)),
+		repo:  repo,
+		leads: NewLeadService(repo),
+		auth:  NewAuth(cfg),
 	}
 	return s.routes(), nil
 }
@@ -46,8 +51,32 @@ func (s *Server) routes() http.Handler {
 	r.Use(middleware.Timeout(15 * time.Second))
 
 	r.Route("/api", func(r chi.Router) {
+		// Public
 		r.Get("/health", s.handleHealth)
 		r.Post("/leads", s.handleCreateLead)
+
+		r.With(requireJSON).Post("/auth/login", s.handleLogin)
+		r.Post("/auth/logout", s.handleLogout)
+
+		// Admin only
+		r.Group(func(r chi.Router) {
+			r.Use(s.auth.requireAuth)
+			r.Use(requireJSON)
+
+			r.Get("/auth/me", s.handleMe)
+			r.Get("/leads", s.handleListLeads)
+			r.Get("/leads/export", s.handleExport)
+			r.Get("/leads/stats", s.handleCampaignStats)
+			r.Get("/leads/timeseries", s.handleWeeklyLeads)
+			r.Get("/leads/{id}", s.handleGetLead)
+			r.Patch("/leads/{id}/status", s.handleUpdateStatus)
+			r.Delete("/leads/{id}", s.handleDeleteLead)
+
+			r.Get("/campaigns", s.handleListCampaigns)
+			r.Post("/campaigns", s.handleCreateCampaign)
+			r.Put("/campaigns/{id}", s.handleUpdateCampaign)
+			r.Delete("/campaigns/{id}", s.handleDeleteCampaign)
+		})
 	})
 	return r
 }

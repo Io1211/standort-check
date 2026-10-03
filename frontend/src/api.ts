@@ -1,9 +1,11 @@
-// All requests go to the same origin under /api (Vite proxy locally, Vercel rewrite in production).
+// All requests go to the same origin under /api (Vite proxy locally, Vercel
+// rewrite in production). The admin session is an HttpOnly cookie, so the
+// browser sends it automatically and JavaScript never sees the token.
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
+    ...init,
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
@@ -21,4 +23,8 @@ export class ApiError extends Error {
     this.status = status
     this.fields = fields
   }
+}
+
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401
 }

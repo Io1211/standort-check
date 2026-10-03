@@ -20,45 +20,83 @@ func (s LeadStatus) Valid() bool {
 }
 
 // Lead is a stored location-check request. Raw fields hold what the customer
-// typed (trimmed); *Normalized fields are only used for duplicate detection.
+// typed (trimmed); *Normalized fields are only used for duplicate detection
+// and are not sent to the dashboard.
 type Lead struct {
-	ID string
+	ID string `json:"id"`
 
-	FirstName string
-	LastName  string
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
 
-	Email           string
-	EmailNormalized string
+	Email           string `json:"email"`
+	EmailNormalized string `json:"-"`
 
-	Phone           string
-	PhoneNormalized string
+	Phone           string `json:"phone"`
+	PhoneNormalized string `json:"-"`
 
-	Street           string
-	StreetNormalized string
+	Street           string `json:"street"`
+	StreetNormalized string `json:"-"`
 
-	HouseNumber           string // optional, "" if the plot has none
-	HouseNumberNormalized string
+	HouseNumber           string `json:"houseNumber"` // "" if the plot has none
+	HouseNumberNormalized string `json:"-"`
 
-	PostalCode string
+	PostalCode string `json:"postalCode"`
 
-	City           string
-	CityNormalized string
+	City           string `json:"city"`
+	CityNormalized string `json:"-"`
 
-	ParcelNote string // optional free text, e.g. "Flurstück 123/4"
+	ParcelNote string `json:"parcelNote"` // e.g. "Flurstück 123/4"
 
-	UTMSource   string
-	UTMMedium   string
-	UTMCampaign string
-	UTMContent  string
-	UTMTerm     string
-	GCLID       string
-	FBCLID      string
-	Referrer    string
+	UTMSource   string `json:"utmSource"`
+	UTMMedium   string `json:"utmMedium"`
+	UTMCampaign string `json:"utmCampaign"`
+	UTMContent  string `json:"utmContent"`
+	UTMTerm     string `json:"utmTerm"`
+	GCLID       string `json:"gclid"`
+	FBCLID      string `json:"fbclid"`
+	Referrer    string `json:"referrer"`
 
-	Status      LeadStatus
-	DuplicateOf *string
+	Status      LeadStatus `json:"status"`
+	DuplicateOf *string    `json:"duplicateOf"`
 
-	CreatedAt time.Time
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// LeadListItem is a lead as shown in the dashboard, plus the number of later
+// leads that were marked as duplicates of it.
+type LeadListItem struct {
+	Lead
+	DuplicateCount int `json:"duplicateCount"`
+}
+
+// LeadSummary is a short reference to a related lead (original / duplicates).
+type LeadSummary struct {
+	ID        string     `json:"id"`
+	FirstName string     `json:"firstName"`
+	LastName  string     `json:"lastName"`
+	Email     string     `json:"email"`
+	Status    LeadStatus `json:"status"`
+	CreatedAt time.Time  `json:"createdAt"`
+}
+
+// LeadDetail is the payload of the lead detail page.
+type LeadDetail struct {
+	Lead       LeadListItem  `json:"lead"`
+	Original   *LeadSummary  `json:"original"`   // set if this lead is a duplicate
+	Duplicates []LeadSummary `json:"duplicates"` // later leads pointing to this one
+}
+
+// CampaignStats is one row of the campaign evaluation. Status counts are
+// based on unique leads only, so duplicates don't inflate a campaign.
+type CampaignStats struct {
+	Source       string `json:"source"`
+	Campaign     string `json:"campaign"`
+	Total        int    `json:"total"`
+	Unique       int    `json:"unique"`
+	New          int    `json:"new"`
+	Contacted    int    `json:"contacted"`
+	Qualified    int    `json:"qualified"`
+	NotQualified int    `json:"notQualified"`
 }
 
 // CreateLeadRequest is the JSON body of POST /api/leads. Nothing in it is
