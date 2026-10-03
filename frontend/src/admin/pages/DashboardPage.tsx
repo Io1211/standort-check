@@ -7,6 +7,7 @@ import { CampaignTable } from '../components/CampaignTable'
 import { rate, sum } from '../stats'
 import { campaignLabel, sourceLabel } from '../format'
 import type { CampaignStats, GeoStats } from '../types'
+import { useAdminRevision } from '../useAdminRevision'
 
 interface WeeklyRow {
   week: string
@@ -25,18 +26,19 @@ const QualifiedBars = lazy(() => import('../charts/QualifiedBars').then((m) => (
 
 // Answers "which campaigns bring leads, and which of them are any good?".
 export function DashboardPage() {
+  const revision = useAdminRevision()
   const [days, setDays] = useState(30)
-  const [stats, setStats] = useState<{ days: number; rows: CampaignStats[] } | null>(null)
+  const [stats, setStats] = useState<{ days: number; revision: number; rows: CampaignStats[] } | null>(null)
   const [weekly, setWeekly] = useState<{ weeks: string[]; rows: WeeklyRow[] } | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     const controller = new AbortController()
     cachedAdminFetch<{ campaigns: CampaignStats[] }>(`/leads/stats?days=${days}`, controller.signal)
-      .then((d) => { if (!controller.signal.aborted) { setStats({ days, rows: d.campaigns }); setError('') } })
+      .then((d) => { if (!controller.signal.aborted) { setStats({ days, revision, rows: d.campaigns }); setError('') } })
       .catch((err) => { if (!controller.signal.aborted) setError(err.message) })
     return () => controller.abort()
-  }, [days])
+  }, [days, revision])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -44,9 +46,9 @@ export function DashboardPage() {
       .then((d) => { if (!controller.signal.aborted) setWeekly(d) })
       .catch((err) => { if (!controller.signal.aborted) setError(err.message) })
     return () => controller.abort()
-  }, [])
+  }, [revision])
 
-  const rows = stats?.days === days ? stats.rows : readAdminCache<{ campaigns: CampaignStats[] }>(`/leads/stats?days=${days}`)?.campaigns ?? null
+  const rows = stats?.days === days && stats.revision === revision ? stats.rows : readAdminCache<{ campaigns: CampaignStats[] }>(`/leads/stats?days=${days}`)?.campaigns ?? null
   const periodLabel = PERIODS.find((p) => p.days === days)?.label ?? ''
 
   return (
