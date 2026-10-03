@@ -154,3 +154,34 @@ func TestCreateLeadConfirmationFlow(t *testing.T) {
 		})
 	}
 }
+
+func TestConfirmationTextSummarizesInput(t *testing.T) {
+	req := validRequest()
+	req.HouseNumber = "14"
+	req.ParcelNote = "Flurstück 123/4\nEckgrundstück"
+	text := confirmationText(buildLead(req))
+
+	for _, want := range []string{
+		"Guten Tag Thomas Ahrens",
+		"werden jetzt von unserem Team geprüft",
+		"E-Mail:      thomas@example.com",
+		"Telefon:     +49 40 123456",
+		"Grundstück:  Hauptstraße 14, 01067 Dresden",
+		"Hinweis:     Flurstück 123/4\n             Eckgrundstück",
+		"Antworten Sie einfach auf diese E-Mail",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("confirmation text missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestConfirmationTextWithoutOptionalFields(t *testing.T) {
+	text := confirmationText(buildLead(validRequest())) // no house number, no note
+	if !strings.Contains(text, "Grundstück:  Hauptstraße, 01067 Dresden") {
+		t.Errorf("address without house number rendered wrong:\n%s", text)
+	}
+	if strings.Contains(text, "Hinweis:") {
+		t.Error("empty note must not be shown")
+	}
+}
