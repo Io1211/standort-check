@@ -36,7 +36,13 @@ export function slugify(s: string, { keepTrailing = false } = {}): string {
     .replace(/-+/g, '-')
     .replace(/^[-._]+/, '')
     .slice(0, 100)
-  return keepTrailing ? slug : slug.replace(/[-._]+$/, '')
+  if (keepTrailing) return slug
+
+  let end = slug.length
+  while (end > 0 && '-._'.includes(slug[end - 1])) {
+    end--
+  }
+  return slug.slice(0, end)
 }
 
 // The tracking link points at this deployment's form, so it is always

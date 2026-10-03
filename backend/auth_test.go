@@ -124,12 +124,24 @@ func TestLoginFlow(t *testing.T) {
 		t.Fatalf("login: %d, want 200", rec.Code)
 	}
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode {
+	if len(cookies) != 1 || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode {
 		t.Fatalf("unexpected session cookie: %+v", cookies)
 	}
 
 	if rec := do(h, "GET", "/api/auth/me", "", "", cookies[0]); rec.Code != http.StatusOK {
 		t.Fatalf("me with cookie: %d, want 200", rec.Code)
+	}
+}
+
+func TestSessionCookiesAreSecure(t *testing.T) {
+	a := NewAuth(Config{})
+	for _, maxAge := range []int{int(sessionTTL.Seconds()), -1} {
+		rec := httptest.NewRecorder()
+		a.setCookie(rec, "", maxAge)
+		cookies := rec.Result().Cookies()
+		if len(cookies) != 1 || !cookies[0].Secure {
+			t.Fatalf("maxAge=%d: expected Secure session cookie, got %+v", maxAge, cookies)
+		}
 	}
 }
 

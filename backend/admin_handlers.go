@@ -18,6 +18,8 @@ const (
 	maxPageSize     = 200
 )
 
+const leadNotFoundMessage = "Lead nicht gefunden."
+
 // --- Auth ---
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -90,12 +92,12 @@ func (s *Server) handleListLeads(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetLead(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		writeError(w, http.StatusNotFound, "Lead nicht gefunden.")
+		writeError(w, http.StatusNotFound, leadNotFoundMessage)
 		return
 	}
 	detail, err := s.repo.GetLead(r.Context(), id)
 	if errors.Is(err, ErrNotFound) {
-		writeError(w, http.StatusNotFound, "Lead nicht gefunden.")
+		writeError(w, http.StatusNotFound, leadNotFoundMessage)
 		return
 	}
 	if err != nil {
@@ -108,7 +110,7 @@ func (s *Server) handleGetLead(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		writeError(w, http.StatusNotFound, "Lead nicht gefunden.")
+		writeError(w, http.StatusNotFound, leadNotFoundMessage)
 		return
 	}
 	var body struct {
@@ -125,7 +127,7 @@ func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	err := s.repo.UpdateStatus(r.Context(), id, body.Status)
 	if errors.Is(err, ErrNotFound) {
-		writeError(w, http.StatusNotFound, "Lead nicht gefunden.")
+		writeError(w, http.StatusNotFound, leadNotFoundMessage)
 		return
 	}
 	if err != nil {
@@ -182,12 +184,12 @@ func (s *Server) handleWeeklyLeads(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteLead(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validUUID(id) {
-		writeError(w, http.StatusNotFound, "Lead nicht gefunden.")
+		writeError(w, http.StatusNotFound, leadNotFoundMessage)
 		return
 	}
 	err := s.repo.DeleteLead(r.Context(), id)
 	if errors.Is(err, ErrNotFound) {
-		writeError(w, http.StatusNotFound, "Lead nicht gefunden.")
+		writeError(w, http.StatusNotFound, leadNotFoundMessage)
 		return
 	}
 	if err != nil {

@@ -32,7 +32,6 @@ type Auth struct {
 	email        string // normalized
 	passwordHash []byte
 	secret       []byte
-	secure       bool // Secure cookie flag (HTTPS only), on in production
 	now          func() time.Time
 }
 
@@ -41,7 +40,6 @@ func NewAuth(cfg Config) *Auth {
 		email:        NormalizeEmail(cfg.AdminEmail),
 		passwordHash: []byte(cfg.AdminPasswordHash),
 		secret:       []byte(cfg.SessionSecret),
-		secure:       cfg.Production,
 		now:          time.Now,
 	}
 }
@@ -96,7 +94,7 @@ func (a *Auth) setCookie(w http.ResponseWriter, value string, maxAge int) {
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,                 // not readable from JavaScript
-		Secure:   a.secure,             // HTTPS only in production
+		Secure:   true,                 // session cookies must only travel over HTTPS
 		SameSite: http.SameSiteLaxMode, // not sent on cross-site POST/PATCH (CSRF)
 	})
 }
