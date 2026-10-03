@@ -1,0 +1,21 @@
+# env
+.env
+.env.local
+*.local
+
+# frontend
+node_modules/
+frontend/dist/
+
+# go
+/bin/
+*.exe
+
+# vercel
+.vercel/
+
+# os/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
