@@ -19,3 +19,7 @@ frontend/dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# coverage
+coverage.out
+.scannerwork/

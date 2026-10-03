@@ -13,8 +13,6 @@ type Config struct {
 	SessionSecret     string
 	BrevoAPIKey       string
 	EmailFrom         string
-	// Production enables the Secure flag on cookies.
-	Production bool
 }
 
 func LoadConfig() (Config, error) {
@@ -25,7 +23,6 @@ func LoadConfig() (Config, error) {
 		SessionSecret:     os.Getenv("SESSION_SECRET"),
 		BrevoAPIKey:       os.Getenv("BREVO_API_KEY"),
 		EmailFrom:         os.Getenv("EMAIL_FROM"),
-		Production:        os.Getenv("VERCEL_ENV") == "production" || os.Getenv("APP_ENV") == "production",
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("DATABASE_URL is not set")

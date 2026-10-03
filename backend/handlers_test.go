@@ -11,7 +11,7 @@ import (
 // These tests cover the paths that return before the database is touched,
 // so no repository is needed.
 func newTestServer() http.Handler {
-	s := &Server{leads: NewLeadService(nil)}
+	s := &Server{leads: NewLeadService(nil), auth: NewAuth(Config{})}
 	return s.routes()
 }
 

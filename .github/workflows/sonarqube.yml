@@ -1,0 +1,49 @@
+name: SonarCloud
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  sonarqube:
+    name: Analyse
+    runs-on: ubuntu-latest
+    env:
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check SonarCloud configuration
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Add SONAR_TOKEN under repository Settings > Secrets and variables > Actions > Secrets."
+            exit 1
+          fi
+          if [ -z "$SONAR_ORGANIZATION" ]; then
+            echo "::error::Add SONAR_ORGANIZATION under repository Settings > Secrets and variables > Actions > Variables (the sonar.organization value from SonarCloud)."
+            exit 1
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Go tests with coverage
+        run: go test ./... -coverprofile=coverage.out
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          args: -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

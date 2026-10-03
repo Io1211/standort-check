@@ -69,10 +69,12 @@ func buildLead(req CreateLeadRequest) Lead {
 		ParcelNote: t(req.ParcelNote),
 
 		// Attribution must never block a submission, so overlong values are
-		// truncated instead of rejected.
-		UTMSource:   truncate(req.UTMSource, 255),
-		UTMMedium:   truncate(req.UTMMedium, 255),
-		UTMCampaign: truncate(req.UTMCampaign, 255),
+		// truncated instead of rejected. Source, medium and campaign are
+		// lowercased so "Google" and "google" end up in the same group.
+		// Content and term keep their case (ad names, keywords).
+		UTMSource:   strings.ToLower(truncate(req.UTMSource, 255)),
+		UTMMedium:   strings.ToLower(truncate(req.UTMMedium, 255)),
+		UTMCampaign: strings.ToLower(truncate(req.UTMCampaign, 255)),
 		UTMContent:  truncate(req.UTMContent, 255),
 		UTMTerm:     truncate(req.UTMTerm, 255),
 		GCLID:       truncate(req.GCLID, 255),

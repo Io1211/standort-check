@@ -37,3 +37,22 @@ npm run dev                 # http://localhost:5173, proxies /api → :8080
 ```
 
 Health check: `GET /api/health` returns `{"status":"ok","database":"ok"}`.
+
+## SonarCloud analysis
+
+The GitHub Actions workflow `.github/workflows/sonarqube.yml` runs Go tests with
+coverage and analyzes the Go backend and React/TypeScript frontend for the
+SonarCloud project `Io1211_standort-check`.
+
+In GitHub repository **Settings → Secrets and variables → Actions**, configure:
+
+- Repository secret `SONAR_TOKEN`: the token created in SonarCloud.
+- Repository variable `SONAR_ORGANIZATION`: the exact `sonar.organization` value
+  shown in the project's SonarCloud GitHub Actions setup.
+
+If Automatic Analysis is enabled in SonarCloud, disable it under
+**Administration → Analysis Method** before using this CI workflow.
+
+Push the configuration to `main` to run the analysis, or start **SonarCloud**
+manually from the GitHub **Actions** tab. Pull requests also trigger analysis.
+The token is read from GitHub Actions secrets; a local `.env` is not used by CI.
