@@ -13,20 +13,37 @@ import (
 var ErrDuplicateCampaign = errors.New("campaign link already exists")
 
 // Leads are matched to a campaign by their UTM values: same source and
-// campaign, and the same content if the campaign defines a fixed one. A
-// placeholder content like {{ad.name}} is replaced by the ad platform on
-// click, so it never appears in a lead and is ignored for matching.
+// campaign, and a matching content if the campaign defines one.
+//
+// Ad platforms fill placeholders such as Google's {creative} or Meta's
+// {{ad.name}} on click, so the literal placeholder never appears in a lead.
+// Every placeholder therefore acts as a wildcard and the rest of the content
+// must match literally: "video_{creative}" matches "video_12345" but not
+// "image_12345". A content that is only a placeholder matches every lead of
+// the campaign, including leads without utm_content.
+//
+// contentPattern turns the campaign content into a LIKE pattern: the LIKE
+// wildcards \, % and _ in the literal parts are escaped first, then each
+// placeholder group becomes %.
+const contentPattern = `regexp_replace(
+	replace(replace(replace(c.utm_content, '\', '\\'), '%', '\%'), '_', '\_'),
+	'\{+[^{}]*\}+', '%', 'g')`
+
+const campaignLeadJoin = `
+	LEFT JOIN leads l
+	       ON l.utm_source = c.utm_source
+	      AND l.utm_campaign = c.utm_campaign
+	      AND (c.utm_content IS NULL
+	           OR (c.utm_content LIKE '%{%' AND COALESCE(l.utm_content, '') LIKE ` + contentPattern + `)
+	           OR l.utm_content = c.utm_content)`
+
 const campaignSelect = `
 	SELECT c.id, c.name, c.utm_source, c.utm_medium, c.utm_campaign, COALESCE(c.utm_content, ''),
 	       COALESCE(c.notes, ''), c.archived, c.created_at,
 	       count(l.id),
 	       count(l.id) FILTER (WHERE l.duplicate_of IS NULL),
 	       count(l.id) FILTER (WHERE l.duplicate_of IS NULL AND l.status = 'qualified')
-	FROM campaigns c
-	LEFT JOIN leads l
-	       ON l.utm_source = c.utm_source
-	      AND l.utm_campaign = c.utm_campaign
-	      AND (c.utm_content IS NULL OR c.utm_content LIKE '%{%' OR l.utm_content = c.utm_content)`
+	FROM campaigns c` + campaignLeadJoin
 
 func scanCampaign(row pgx.Row) (Campaign, error) {
 	var c Campaign

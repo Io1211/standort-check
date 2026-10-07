@@ -231,7 +231,7 @@ function CampaignForm({ initial, id, onCancel, onSaved }: {
       </div>
 
       <Input label="Anzeige / Variante (utm_content, optional)" error={errors.utmContent}
-        hint="Unterscheidet Anzeigen derselben Kampagne. Platzhalter wie {{ad.name}} (Meta) werden von der Plattform ersetzt.">
+        hint="Unterscheidet Anzeigen derselben Kampagne. Platzhalter wie {creative} (Google) oder {{ad.name}} (Meta) ersetzt die Plattform beim Klick; feste Teile davor oder danach müssen übereinstimmen.">
         <input value={v.utmContent} onChange={(e) => set({ utmContent: e.target.value.trim() })} className={inputCls} />
       </Input>
 

@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -144,5 +145,53 @@ func TestRepository_ConcurrentSubmissions(t *testing.T) {
 	}
 	if originals != 1 {
 		t.Fatalf("expected exactly 1 original, got %d", originals)
+	}
+}
+
+// Placeholder contents are filled by the ad platform on click. A campaign
+// link with "video_{creative}" must collect the leads whose content starts
+// with "video_" and nothing else; a pure placeholder collects every lead of
+// the campaign.
+func TestRepository_CampaignMatchesPlaceholderContent(t *testing.T) {
+	repo, ctx := testRepo(t)
+	run := time.Now().Format("150405.000000")
+	campaign := "placeholder-test-" + strings.ReplaceAll(run, ".", "-")
+
+	newLead := func(email, content string) {
+		l := lead(email, "040 "+email[:6], "Teststraße", "", "12345", "Testort "+run)
+		l.UTMSource, l.UTMMedium, l.UTMCampaign, l.UTMContent = "google", "cpc", campaign, content
+		saved, err := repo.CreateLead(ctx, l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = repo.DeleteLead(ctx, saved.ID) })
+	}
+	newLead("video1@example.com", "video_111")
+	newLead("video2@example.com", "video_222")
+	newLead("image1@example.com", "image_333")
+	newLead("videox@example.com", "videoX") // "_" must not act as a wildcard
+	newLead("nocont@example.com", "")
+
+	newCampaign := func(content string) Campaign {
+		c, err := repo.CreateCampaign(ctx, CampaignRequest{
+			Name: "Test " + content, UTMSource: "google", UTMMedium: "cpc", UTMCampaign: campaign, UTMContent: content,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = repo.DeleteCampaign(ctx, c.ID) })
+		return c
+	}
+	for content, want := range map[string]int{
+		"video_{creative}": 2,
+		"image_{creative}": 1,
+		"{creative}":       5,
+		"{{ad.name}}":      5,
+		"video_111":        1,
+		"":                 5,
+	} {
+		if got := newCampaign(content).Leads; got != want {
+			t.Errorf("content %q: %d leads, want %d", content, got, want)
+		}
 	}
 }
