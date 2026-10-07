@@ -1,7 +1,7 @@
 # Standort-Check
 
 Lead form for a free plot location check plus an internal sales dashboard.
-Case study for Planeco Building GmbH.
+
 
 ```
 Browser ──▶ Vercel ──┬─▶ React (Vite, static)
