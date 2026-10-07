@@ -43,10 +43,17 @@ Health check: `GET /api/health` returns `{"status":"ok","database":"ok"}`.
 After a valid form submission is stored, the API sends a German confirmation
 to the submitted email address through Brevo. Configure `BREVO_API_KEY` and
 `EMAIL_FROM` in `.env` for local development and in the Vercel environment for
-deployment. Use a sender address registered in Brevo:
+deployment. `EMAIL_FROM` must be a **verified** sender in the Brevo account
+(Brevo → Senders, Domains & Dedicated IPs → Senders):
 [Brevo setup and API documentation](https://developers.brevo.com/docs/send-a-transactional-email).
 
-The send runs before the response with a three-second timeout so it also works
+Brevo accepts a send request (HTTP 201) even for an unverified sender and only
+discards the mail afterwards. The API therefore checks the configured sender
+against Brevo's sender list before the first send (cached for one hour per
+process) and reports the mail as not sent when the sender is missing or not
+yet verified. The reason is logged.
+
+The send runs before the response with a five-second timeout so it also works
 in the serverless runtime. Mail failures are logged; the saved request still
 succeeds and the thank-you page reports that the email could not be sent.
 Without both settings, mail is disabled. There is no automatic retry queue.

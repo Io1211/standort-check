@@ -8,20 +8,31 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
-const confirmationTimeout = 3 * time.Second
+// confirmationTimeout bounds the whole send, including the one-off sender
+// check on a cold start (two short Brevo calls).
+const confirmationTimeout = 5 * time.Second
+
+// senderCheckTTL is how long a positive sender check is trusted. A sender
+// that disappears from Brevo is noticed within this window at the latest.
+const senderCheckTTL = time.Hour
 
 type confirmationSender interface {
 	SendConfirmation(context.Context, Lead) error
 }
 
 type brevoMailer struct {
-	apiKey   string
-	from     string
-	endpoint string
-	client   *http.Client
+	apiKey          string
+	from            string
+	endpoint        string
+	sendersEndpoint string
+	client          *http.Client
+
+	mu         sync.Mutex
+	verifiedAt time.Time // zero until the sender has been found active in Brevo
 }
 
 func newConfirmationSender(cfg Config) confirmationSender {
@@ -29,11 +40,61 @@ func newConfirmationSender(cfg Config) confirmationSender {
 		return nil
 	}
 	return &brevoMailer{
-		apiKey:   strings.TrimSpace(cfg.BrevoAPIKey),
-		from:     strings.TrimSpace(cfg.EmailFrom),
-		endpoint: "https://api.brevo.com/v3/smtp/email",
-		client:   &http.Client{Timeout: confirmationTimeout},
+		apiKey:          strings.TrimSpace(cfg.BrevoAPIKey),
+		from:            strings.TrimSpace(cfg.EmailFrom),
+		endpoint:        "https://api.brevo.com/v3/smtp/email",
+		sendersEndpoint: "https://api.brevo.com/v3/senders",
+		client:          &http.Client{Timeout: confirmationTimeout},
 	}
+}
+
+// ensureVerifiedSender guards against Brevo's asynchronous rejection: the
+// send endpoint answers HTTP 201 even for a sender that is not verified in
+// the account and only discards the mail afterwards ("Sending has been
+// rejected because the sender you used ... is not valid"). Without this
+// check the form would tell the customer that a confirmation was sent when
+// nothing ever leaves Brevo. The sender list is fetched at most once per
+// senderCheckTTL per process.
+func (m *brevoMailer) ensureVerifiedSender(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.verifiedAt.IsZero() && time.Since(m.verifiedAt) < senderCheckTTL {
+		return nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.sendersEndpoint, nil)
+	if err != nil {
+		return fmt.Errorf("prepare sender check: %w", err)
+	}
+	req.Header.Set("api-key", m.apiKey)
+	req.Header.Set("Accept", "application/json")
+	res, err := m.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("sender check: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 8<<10))
+		return fmt.Errorf("sender check rejected by Brevo (HTTP %d)", res.StatusCode)
+	}
+	var list struct {
+		Senders []struct {
+			Email  string `json:"email"`
+			Active bool   `json:"active"`
+		} `json:"senders"`
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&list); err != nil {
+		return fmt.Errorf("decode sender list: %w", err)
+	}
+	for _, s := range list.Senders {
+		if strings.EqualFold(strings.TrimSpace(s.Email), m.from) {
+			if !s.Active {
+				return fmt.Errorf("sender %s exists in Brevo but is not verified yet; Brevo would discard the mail", m.from)
+			}
+			m.verifiedAt = time.Now()
+			return nil
+		}
+	}
+	return fmt.Errorf("sender %s is not a verified Brevo sender (EMAIL_FROM must match a verified entry under Senders); Brevo would discard the mail", m.from)
 }
 
 type emailContact struct {
@@ -42,6 +103,9 @@ type emailContact struct {
 }
 
 func (m *brevoMailer) SendConfirmation(ctx context.Context, lead Lead) error {
+	if err := m.ensureVerifiedSender(ctx); err != nil {
+		return err
+	}
 	payload := struct {
 		Sender      emailContact   `json:"sender"`
 		To          []emailContact `json:"to"`

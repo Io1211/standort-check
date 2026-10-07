@@ -17,25 +17,41 @@ type emailRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f emailRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// sendersJSON mimics Brevo's GET /v3/senders answer.
+func sendersJSON(email string, active bool) *http.Response {
+	body := `{"senders":[{"id":1,"name":"Team","email":"` + email + `","active":` + map[bool]string{true: "true", false: "false"}[active] + `,"ips":[]}]}`
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}
+}
+
 func TestBrevoConfirmationPayload(t *testing.T) {
 	m := newConfirmationSender(Config{BrevoAPIKey: "test-key", EmailFrom: "sender@example.com"}).(*brevoMailer)
+	var calls []string
 	m.client = &http.Client{Transport: emailRoundTrip(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		if r.Header.Get("api-key") != "test-key" {
+			t.Fatal("missing authentication header")
+		}
+		if r.Method == http.MethodGet && r.URL.String() == "https://api.brevo.com/v3/senders" {
+			// Brevo stores the address as typed in the account; matching is case-insensitive.
+			return sendersJSON("Sender@Example.com", true), nil
+		}
 		if r.Method != http.MethodPost || r.URL.String() != "https://api.brevo.com/v3/smtp/email" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
 		}
-		if r.Header.Get("api-key") != "test-key" || r.Header.Get("Content-Type") != "application/json" {
-			t.Fatal("missing authentication or JSON header")
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Fatal("missing JSON header")
 		}
 		var body struct {
 			Sender  emailContact   `json:"sender"`
 			To      []emailContact `json:"to"`
+			ReplyTo emailContact   `json:"replyTo"`
 			Subject string         `json:"subject"`
 			Text    string         `json:"textContent"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.Sender.Email != "sender@example.com" || len(body.To) != 1 || body.To[0].Email != "thomas@example.com" {
+		if body.Sender.Email != "sender@example.com" || body.ReplyTo.Email != "sender@example.com" || len(body.To) != 1 || body.To[0].Email != "thomas@example.com" {
 			t.Fatalf("unexpected sender/recipient: %+v", body)
 		}
 		if !strings.Contains(body.Subject, "Bestätigung") || !strings.Contains(body.Text, "Thomas Ahrens") || !strings.Contains(body.Text, "Standort") {
@@ -46,12 +62,77 @@ func TestBrevoConfirmationPayload(t *testing.T) {
 	if err := m.SendConfirmation(context.Background(), buildLead(validRequest())); err != nil {
 		t.Fatal(err)
 	}
+	// The second send within the TTL must reuse the verified sender.
+	if err := m.SendConfirmation(context.Background(), buildLead(validRequest())); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"GET /v3/senders", "POST /v3/smtp/email", "POST /v3/smtp/email"}
+	if strings.Join(calls, ",") != strings.Join(want, ",") {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}
+
+// Brevo answers HTTP 201 for an unverified sender and only rejects the mail
+// afterwards. The app must therefore never report such a mail as sent.
+func TestBrevoUnverifiedSenderIsNotSent(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		response func() *http.Response
+	}{
+		{"sender missing", func() *http.Response { return sendersJSON("other@example.com", true) }},
+		{"sender not yet verified", func() *http.Response { return sendersJSON("sender@example.com", false) }},
+		{"sender list unavailable", func() *http.Response {
+			return &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(strings.NewReader("private recipient details"))}
+		}},
+		{"sender list malformed", func() *http.Response {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("<html>"))}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newConfirmationSender(Config{BrevoAPIKey: "test-key", EmailFrom: "sender@example.com"}).(*brevoMailer)
+			m.client = &http.Client{Transport: emailRoundTrip(func(r *http.Request) (*http.Response, error) {
+				if r.Method == http.MethodPost {
+					t.Fatal("mail must not be sent through an unverified sender")
+				}
+				return tc.response(), nil
+			})}
+			err := m.SendConfirmation(context.Background(), buildLead(validRequest()))
+			if err == nil || strings.Contains(err.Error(), "private") {
+				t.Fatalf("unsafe or missing error: %v", err)
+			}
+			if !m.verifiedAt.IsZero() {
+				t.Fatal("a failed check must not be cached as verified")
+			}
+		})
+	}
+}
+
+func TestBrevoSenderCheckExpires(t *testing.T) {
+	m := newConfirmationSender(Config{BrevoAPIKey: "test-key", EmailFrom: "sender@example.com"}).(*brevoMailer)
+	checks := 0
+	m.client = &http.Client{Transport: emailRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet {
+			checks++
+			return sendersJSON("sender@example.com", true), nil
+		}
+		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	})}
+	m.verifiedAt = time.Now().Add(-senderCheckTTL - time.Minute) // stale positive result
+	if err := m.SendConfirmation(context.Background(), buildLead(validRequest())); err != nil {
+		t.Fatal(err)
+	}
+	if checks != 1 {
+		t.Fatalf("stale sender check must be repeated, got %d checks", checks)
+	}
 }
 
 func TestBrevoConfirmationFailures(t *testing.T) {
 	for _, status := range []int{400, 401, 429, 500} {
 		m := newConfirmationSender(Config{BrevoAPIKey: "test-key", EmailFrom: "sender@example.com"}).(*brevoMailer)
-		m.client = &http.Client{Transport: emailRoundTrip(func(*http.Request) (*http.Response, error) {
+		m.client = &http.Client{Transport: emailRoundTrip(func(r *http.Request) (*http.Response, error) {
+			if r.Method == http.MethodGet {
+				return sendersJSON("sender@example.com", true), nil
+			}
 			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("private recipient details"))}, nil
 		})}
 		err := m.SendConfirmation(context.Background(), buildLead(validRequest()))
