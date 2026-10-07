@@ -32,9 +32,13 @@ export function QualifiedBars({ items }: { items: BarItem[] }) {
           {/* Grey track behind every row (own hidden axis, so it overlaps the data bars). */}
           <YAxis yAxisId="track" type="category" dataKey="key" hide />
           <Bar yAxisId="track" dataKey="track" fill="#f0efec" radius={4} isAnimationActive={false} activeBar={false} />
-          {/* Ticks look items up by key, never by position: Recharts skips
-              zero-length bars, so indexes of bar labels can shift. */}
-          <YAxis yAxisId="names" type="category" dataKey="key" width={170} tickLine={false} axisLine={false}
+          {/* Row labels are axis ticks, not bar labels, and look items up by
+              key, never by position: Recharts skips zero-length bars (e.g. a
+              campaign with 0 qualified leads), so bar label indexes shift and
+              "0 / 2" would be shown as the previous row's "1 / 1".
+              interval={0} keeps every tick, so no row loses its label when
+              Recharts thinks ticks overlap. */}
+          <YAxis yAxisId="names" type="category" dataKey="key" width={170} interval={0} tickLine={false} axisLine={false}
             tick={(p: { x?: number | string; y?: number | string; payload?: { value: string } }) => {
               const item = byKey.get(p.payload?.value ?? '')
               if (!item) return <g />
@@ -49,7 +53,7 @@ export function QualifiedBars({ items }: { items: BarItem[] }) {
                 </g>
               )
             }} />
-          <YAxis yAxisId="values" orientation="right" type="category" dataKey="key" width={52} tickLine={false} axisLine={false}
+          <YAxis yAxisId="values" orientation="right" type="category" dataKey="key" width={52} interval={0} tickLine={false} axisLine={false}
             tick={(p: { x?: number | string; y?: number | string; payload?: { value: string } }) => {
               const item = byKey.get(p.payload?.value ?? '')
               if (!item) return <g />
